@@ -1,4 +1,4 @@
-package com.tevfik.koseli.reactive.users.presentation;
+package com.tevfik.koseli.reactive.users.presentation.model;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;

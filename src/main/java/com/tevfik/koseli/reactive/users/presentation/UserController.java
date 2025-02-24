@@ -1,5 +1,7 @@
 package com.tevfik.koseli.reactive.users.presentation;
 
+import com.tevfik.koseli.reactive.users.presentation.model.CreateUserRequest;
+import com.tevfik.koseli.reactive.users.presentation.model.UserRest;
 import com.tevfik.koseli.reactive.users.service.UserService;
 import jakarta.validation.Valid;
 

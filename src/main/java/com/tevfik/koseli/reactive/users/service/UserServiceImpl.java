@@ -2,18 +2,16 @@ package com.tevfik.koseli.reactive.users.service;
 
 import com.tevfik.koseli.reactive.users.data.UserEntity;
 import com.tevfik.koseli.reactive.users.data.UserRepository;
-import com.tevfik.koseli.reactive.users.presentation.CreateUserRequest;
-import com.tevfik.koseli.reactive.users.presentation.UserRest;
+import com.tevfik.koseli.reactive.users.presentation.model.CreateUserRequest;
+import com.tevfik.koseli.reactive.users.presentation.model.UserRest;
 import org.springframework.beans.BeanUtils;
-import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.util.UUID;
 
@@ -21,29 +19,20 @@ import java.util.UUID;
 public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
 
-    public UserServiceImpl(UserRepository userRepository) {
+    public UserServiceImpl(UserRepository userRepository, PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
     }
 
     @Override
     public Mono<UserRest> createUser(Mono<CreateUserRequest> createUserRequestMono) {
 
         return createUserRequestMono
-                .mapNotNull(this::convertToEntity)
+                .flatMap(this::convertToEntity)
                 .flatMap(userRepository::save)
-                .mapNotNull(this::convertToRest)
-                .onErrorMap(
-                        throwable -> {
-                            if (throwable instanceof DuplicateKeyException) {
-                                return new ResponseStatusException(HttpStatus.CONFLICT,
-                                        throwable.getMessage());
-                            } else if(throwable instanceof DataIntegrityViolationException) {
-                                return new ResponseStatusException(HttpStatus.BAD_REQUEST, throwable.getMessage());
-                            } else {
-                                return new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, throwable.getMessage());
-                            }
-                        });
+                .mapNotNull(this::convertToRest);
     }
 
     @Override
@@ -62,10 +51,14 @@ public class UserServiceImpl implements UserService {
 
     }
 
-    private UserEntity convertToEntity(CreateUserRequest createUserRequest) {
-        UserEntity userEntity = new UserEntity();
-        BeanUtils.copyProperties(createUserRequest, userEntity); // if the property names are the same you can use BeanUtils
-        return userEntity;
+    private Mono<UserEntity> convertToEntity(CreateUserRequest createUserRequest) {
+        return Mono.fromCallable(()-> {  //This code prevent blocking the thread of crypting of password
+            UserEntity userEntity = new UserEntity();
+            BeanUtils.copyProperties(createUserRequest, userEntity); // if the property names are the same you can use BeanUtils
+            userEntity.setPassword(passwordEncoder.encode(createUserRequest.getPassword())); //initilazed bcrypted password to user entity for saving database
+            return userEntity;
+        }).subscribeOn(Schedulers.boundedElastic());
+
     }
 
     private UserRest convertToRest(UserEntity userEntity) {

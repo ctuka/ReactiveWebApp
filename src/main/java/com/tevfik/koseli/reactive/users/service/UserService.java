@@ -1,7 +1,7 @@
 package com.tevfik.koseli.reactive.users.service;
 
-import com.tevfik.koseli.reactive.users.presentation.CreateUserRequest;
-import com.tevfik.koseli.reactive.users.presentation.UserRest;
+import com.tevfik.koseli.reactive.users.presentation.model.CreateUserRequest;
+import com.tevfik.koseli.reactive.users.presentation.model.UserRest;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 

@@ -4,6 +4,8 @@ import com.tevfik.koseli.reactive.users.data.UserEntity;
 import com.tevfik.koseli.reactive.users.data.UserRepository;
 import org.springframework.security.authentication.ReactiveAuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.userdetails.User;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
@@ -15,11 +17,14 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 
     private final UserRepository userRepository;
     private final ReactiveAuthenticationManager reactiveAuthenticationManager;
+    private final JwtService jwtService;
 
     public AuthenticationServiceImpl(ReactiveAuthenticationManager reactiveAuthenticationManager,
-                                     UserRepository userRepository) {
+                                     UserRepository userRepository
+                                    , JwtService jwtService) {
         this.reactiveAuthenticationManager = reactiveAuthenticationManager;
         this.userRepository = userRepository;
+        this.jwtService = jwtService;
     }
 
     @Override
@@ -37,7 +42,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     private Map<String, String> createAuthResponse(UserEntity user) {
         Map<String, String> result = new HashMap<>();
         result.put("userId", user.getId().toString());
-        result.put("token", "JWT");
+        result.put("token", jwtService.generateJwt(user.getId().toString()));
         return result;
     }
 }

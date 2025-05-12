@@ -2,17 +2,23 @@ package com.tevfik.koseli.reactive.users.service;
 
 import com.tevfik.koseli.reactive.users.data.UserEntity;
 import com.tevfik.koseli.reactive.users.data.UserRepository;
+import com.tevfik.koseli.reactive.users.presentation.model.AlbumRest;
 import com.tevfik.koseli.reactive.users.presentation.model.CreateUserRequest;
 import com.tevfik.koseli.reactive.users.presentation.model.UserRest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeanUtils;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.publisher.Sinks;
 import reactor.core.scheduler.Schedulers;
 
 import java.util.ArrayList;
@@ -23,10 +29,16 @@ public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final  Sinks.Many<UserRest> usersSink;
+    private final WebClient webClient;
+    private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
-    public UserServiceImpl(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+    public UserServiceImpl(UserRepository userRepository, PasswordEncoder passwordEncoder, Sinks.Many<UserRest> usersSink, WebClient webClient) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.usersSink = usersSink;
+        this.webClient = webClient;
+
     }
 
     @Override
@@ -35,14 +47,22 @@ public class UserServiceImpl implements UserService {
         return createUserRequestMono
                 .flatMap(this::convertToEntity)
                 .flatMap(userRepository::save)
-                .mapNotNull(this::convertToRest);
+                .mapNotNull(this::convertToRest)
+                .doOnSuccess(savedUser -> usersSink.tryEmitNext(savedUser));
     }
 
     @Override
-    public Mono<UserRest> getUserById(UUID id) {
+    public Mono<UserRest> getUserById(UUID id, String include, String jwt) {
         return userRepository
                 .findById(id)
-                .mapNotNull(this::convertToRest);
+                .mapNotNull(this::convertToRest)
+                .flatMap(user -> {
+                    if (include!= null && include.equals("albums")) {
+                        //fetch user's photo albums and add them to a user object
+                        return includeUserAlbums(user, jwt);
+                    }
+                    return Mono.just(user);
+                });
     }
 
     @Override
@@ -52,6 +72,13 @@ public class UserServiceImpl implements UserService {
         return userRepository.findAllBy(pageable)
                 .mapNotNull(this::convertToRest);
 
+    }
+
+    @Override
+    public Flux<UserRest> streamUser() {
+        return usersSink.asFlux()
+                .publish()
+                .autoConnect(1);
     }
 
     private Mono<UserEntity> convertToEntity(CreateUserRequest createUserRequest) {
@@ -78,5 +105,33 @@ public class UserServiceImpl implements UserService {
                         .password(userEntity.getPassword())
                         .authorities(new ArrayList<>())
                         .build());
+    }
+
+    private Mono<UserRest> includeUserAlbums(UserRest user, String jwt) {
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .port(8084)
+                        .path("/albums")
+                        .queryParam("userId", user.getId())
+                        .build())
+                .header("Authorization", jwt)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, response -> {
+                    return Mono.error(new RuntimeException("User's albums not found"));
+                })
+                .onStatus(HttpStatusCode::is5xxServerError, response -> {
+            return Mono.error(new RuntimeException("Server error while fetching albums"));
+        })
+                .bodyToFlux(AlbumRest.class)
+                .collectList()
+                .map(albums -> {
+
+                    user.setAlbums(albums);
+                    return user;
+                })
+                .onErrorResume( e -> {
+                    logger.error("Error while fetching albums", e);
+                    return Mono.just(user);
+                });
     }
 }

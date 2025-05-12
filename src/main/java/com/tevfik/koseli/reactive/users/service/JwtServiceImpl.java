@@ -1,10 +1,12 @@
 package com.tevfik.koseli.reactive.users.service;
 
+import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Mono;
 
 import javax.crypto.SecretKey;
 import java.time.Instant;
@@ -33,11 +35,33 @@ public class JwtServiceImpl implements JwtService {
                 .compact();
     }
 
+    @Override
+    public Mono<Boolean> validateJwt(String token) {
+        return Mono.just(token)
+                .map(jwt -> parseToken(jwt))
+                .map(claims -> !claims.getExpiration().before(new Date()))
+                .onErrorReturn(false);
+    }
+
+    @Override
+    public String extractTokenSubject(String token) {
+        return parseToken(token)
+                .getSubject();
+    }
+
+    private Claims parseToken (String token) {
+        return Jwts.parser()
+                .verifyWith(getSigningKey())
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+    }
+
     private SecretKey getSigningKey() {
         return Optional.ofNullable(environment.getProperty("token.secret"))
                 .map(tokenSecret -> tokenSecret.getBytes())
                 .map(tokenSecretBytes -> Keys.hmacShaKeyFor(tokenSecretBytes))
                 .orElseThrow(() ->
-                        new IllegalArgumentException("token.secret must be configured in the application.prperties files"));
+                        new IllegalArgumentException("token.secret must be configured in the application.properties files"));
     };
 }

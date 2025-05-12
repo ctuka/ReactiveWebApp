@@ -42,7 +42,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     private Map<String, String> createAuthResponse(UserEntity user) {
         Map<String, String> result = new HashMap<>();
         result.put("userId", user.getId().toString());
-        result.put("token", jwtService.generateJwt(user.getId().toString()));
+        result.put("token", jwtService.generateJwt(user.getId().toString())); // JWT token adds here to security
         return result;
     }
 }
